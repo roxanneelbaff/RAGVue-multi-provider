@@ -16,6 +16,25 @@ try:
 except Exception:
     get_aspects = None
 
+def _extract_json_block(text: str) -> str | None:
+    """Find the first top-level {...} block in text, tracking brace depth so
+    nested objects are handled correctly. A plain regex can't express
+    balanced/nested matching in Python's re (no (?R) recursion support --
+    that's a PCRE-only extension), so this scans manually instead."""
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def _json_obj(text: str) -> Dict[str, Any]:
     try:
         obj = json.loads(text)
@@ -23,11 +42,10 @@ def _json_obj(text: str) -> Dict[str, Any]:
     except Exception:
         pass
     # fallback: extract first {...} block
-    import re
-    m = re.search(r"\{(?:[^{}]|(?R))*\}", text, re.DOTALL)
-    if m:
+    block = _extract_json_block(text)
+    if block:
         try:
-            obj = json.loads(m.group(0))
+            obj = json.loads(block)
             return obj if isinstance(obj, dict) else {}
         except Exception:
             pass
