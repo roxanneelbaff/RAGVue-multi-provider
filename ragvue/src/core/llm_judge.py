@@ -7,7 +7,15 @@ Environment variables:
   RAGVUE_JUDGE_PROVIDER   openai (default) | anthropic
   OPENAI_API_KEY          Required for openai provider
   ANTHROPIC_API_KEY       Required for anthropic provider
-  OPENAI_BASE_URL         Optional OpenAI base URL override
+  OPENAI_BASE_URL         Optional OpenAI base URL override -- also routes any
+                          OpenAI-compatible provider (e.g. Novita) through the
+                          openai provider. When set, response_format=
+                          {"type": "json_object"} is NOT requested (several
+                          OpenAI-compatible endpoints reject it with a 400);
+                          the model is instead expected to follow the
+                          JSON-only instructions already present in each
+                          metric's prompt, the same approach the anthropic
+                          provider already relies on.
 """
 from __future__ import annotations
 import os
@@ -107,16 +115,24 @@ def call_judge_vision(
 
 def _call_openai(messages: List[dict], model: str, temperature: float) -> str:
     from openai import OpenAI
+    base_url = os.getenv("OPENAI_BASE_URL") or None
     client = OpenAI(
         api_key=os.getenv("OPENAI_API_KEY"),
-        base_url=os.getenv("OPENAI_BASE_URL") or None,
+        base_url=base_url,
     )
-    out = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        response_format={"type": "json_object"},
-    )
+    kwargs: dict = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+    }
+    # response_format={"type": "json_object"} is an OpenAI-specific feature --
+    # some OpenAI-compatible endpoints (e.g. Novita) reject it outright with a
+    # 400. Only request it against the real OpenAI API; other base URLs fall
+    # back to the same prompt-instructed-JSON approach _call_anthropic already
+    # uses (the caller's system/user messages already ask for JSON-only output).
+    if base_url is None:
+        kwargs["response_format"] = {"type": "json_object"}
+    out = client.chat.completions.create(**kwargs)
     return out.choices[0].message.content or ""
 
 
