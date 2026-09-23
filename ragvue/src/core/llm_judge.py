@@ -116,39 +116,39 @@ def call_judge_vision(
 def _call_openai(messages: List[dict], model: str, temperature: float) -> str:
     from openai import OpenAI
     base_url = os.getenv("OPENAI_BASE_URL") or None
-    client = OpenAI(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        base_url=base_url,
-    )
-    kwargs: dict = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-    }
-    # response_format={"type": "json_object"} is an OpenAI-specific feature --
-    # some OpenAI-compatible endpoints (e.g. Novita) reject it outright with a
-    # 400. Only request it against the real OpenAI API; other base URLs fall
-    # back to the same prompt-instructed-JSON approach _call_anthropic already
-    # uses (the caller's system/user messages already ask for JSON-only output).
-    if base_url is None:
-        kwargs["response_format"] = {"type": "json_object"}
-    out = client.chat.completions.create(**kwargs)
-    return out.choices[0].message.content or ""
+    # `with` closes the client's underlying httpx connection pool
+    # deterministically on return, instead of leaving it to garbage
+    # collection -- this call happens per metric per item (thousands of
+    # times in a long eval run, several concurrently via RAGVue's own
+    # per-item thread pool), and letting GC time it caused real, measured
+    # memory growth to the point of an OOM kill in production.
+    with OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url=base_url) as client:
+        kwargs: dict = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        # response_format={"type": "json_object"} is an OpenAI-specific feature --
+        # some OpenAI-compatible endpoints (e.g. Novita) reject it outright with a
+        # 400. Only request it against the real OpenAI API; other base URLs fall
+        # back to the same prompt-instructed-JSON approach _call_anthropic already
+        # uses (the caller's system/user messages already ask for JSON-only output).
+        if base_url is None:
+            kwargs["response_format"] = {"type": "json_object"}
+        out = client.chat.completions.create(**kwargs)
+        return out.choices[0].message.content or ""
 
 
 def _call_openai_text(messages: List[dict], model: str, temperature: float) -> str:
     """OpenAI call without JSON response_format (for free-text outputs)."""
     from openai import OpenAI
-    client = OpenAI(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        base_url=os.getenv("OPENAI_BASE_URL") or None,
-    )
-    out = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-    )
-    return out.choices[0].message.content or ""
+    with OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_BASE_URL") or None) as client:
+        out = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+        )
+        return out.choices[0].message.content or ""
 
 
 def _call_anthropic(messages: List[dict], model: str, temperature: float) -> str:
@@ -179,10 +179,6 @@ def _call_openai_vision(
     messages: List[dict], image_b64: str, media_type: str, user_text: str, model: str, temperature: float
 ) -> str:
     from openai import OpenAI
-    client = OpenAI(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        base_url=os.getenv("OPENAI_BASE_URL") or None,
-    )
     msgs = [m for m in messages if m["role"] == "system"]
     for m in messages:
         if m["role"] != "system":
@@ -194,8 +190,9 @@ def _call_openai_vision(
             {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{image_b64}"}},
         ],
     })
-    out = client.chat.completions.create(model=model, messages=msgs, temperature=temperature)
-    return out.choices[0].message.content or ""
+    with OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_BASE_URL") or None) as client:
+        out = client.chat.completions.create(model=model, messages=msgs, temperature=temperature)
+        return out.choices[0].message.content or ""
 
 
 def _call_anthropic_vision(
@@ -247,20 +244,17 @@ def call_judge_text_stream(messages: List[dict], model: str | None = None, tempe
 def _call_openai_text_stream(messages: List[dict], model: str, temperature: float):
     """OpenAI streaming call — yields text delta chunks."""
     from openai import OpenAI
-    client = OpenAI(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        base_url=os.getenv("OPENAI_BASE_URL") or None,
-    )
-    stream = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        stream=True,
-    )
-    for chunk in stream:
-        delta = chunk.choices[0].delta.content
-        if delta:
-            yield delta
+    with OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url=os.getenv("OPENAI_BASE_URL") or None) as client:
+        stream = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
 
 
 def _call_anthropic_stream(messages: List[dict], model: str, temperature: float):

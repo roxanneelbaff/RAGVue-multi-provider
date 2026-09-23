@@ -1,6 +1,6 @@
-<p align="center">
-  <img src="assets/logo.png" alt="RAGVue logo" width="700"/>
-</p>
+This repo wash forked from the original [RAGVue](https://github.com/KeerthanaMurugaraj/RAGVue-Diagnostic)
+
+Readme from the original RAGVUE:
 
 RAGVue is a **reference-free** evaluation framework for **Retrieval-Augmented Generation (RAG)** systems that goes beyond single scores.  
 It provides **interpretable diagnostics** across **retrieval**, **answer quality**, and **factual grounding**, helping you pinpoint *why* a RAG output failed (retrieval vs generation vs grounding).
@@ -42,16 +42,6 @@ Optional: 4 Lightweight Local Metrics ( no API calls)
 
 ## 🚀 Installation
 
-### Install with pip (recommended)
-```bash
-pip install ragvue                      # core evaluation engine (OpenAI judge)
-pip install "ragvue[ui]"                # + Streamlit dashboard
-pip install "ragvue[anthropic]"         # + Anthropic/Claude judge support
-pip install "ragvue[local]"             # + local metrics (no API, scikit-learn)
-pip install "ragvue[api]"               # + FastAPI REST server
-pip install "ragvue[all]"               # everything
-```
-Latest release: https://pypi.org/project/ragvue/#history
 
 ### Install from source
 
